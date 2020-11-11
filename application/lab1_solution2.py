@@ -1,9 +1,6 @@
 # 2. Implement the fill contour using morphological operations algorithm presented during lecture 5.
 import numpy as np
 import cv2 as cv
-import sys
-import queue
-
 import time
 
 raw_image = cv.imread(cv.samples.findFile("..\\resources\\contour_fill_input_image.png"))
@@ -37,7 +34,6 @@ param val_1: the value that must be considered 1 (i.e. the value that must be in
 param val_2: the background value
 """
 def intersect(image_1, image_2, val_1, val_2):
-    print("intersect: start")
     indexes_1_y, indexes_1_x = np.where(image_1 == val_1)
     indexes_2_y, indexes_2_x = np.where(image_2 == val_1)
     indexes_1 = np.array(list(zip(indexes_1_y, indexes_1_x)))
@@ -56,6 +52,9 @@ def intersect(image_1, image_2, val_1, val_2):
 
 
 """
+Provide the result of applying a dilation with the provided kernel on the provided numpy matrix
+param image_matrix: a numpy matrix representing a binary image
+param kernel: a numpy matrix representing the dilation kernel
 """
 def dilate(image_matrix, kernel):
     kernel_side = kernel.shape[0]
@@ -78,6 +77,12 @@ def dilate(image_matrix, kernel):
 
 
 """
+Provide the union of the two matrices; Basically a logical or, where 1 is replaced by val_1 and 
+0 is replaced by val_2;
+param image_matrix_1: a numpy matrix representing a binary image
+param image_matrix_2: same as above
+param val_1: the integer that must be treated as 1 in logical_or
+param val_2: the integer that must be treated as 0 in logical_or
 """
 def union(image_matrix_1, image_matrix_2, val_1, val_2):
     indexes_1_y, indexes_1_x = np.where(image_matrix_1 == val_1)
@@ -98,6 +103,11 @@ def union(image_matrix_1, image_matrix_2, val_1, val_2):
 
 
 """
+Fill the contour from source_image with content (i.e. pixels)
+param source_image: a numpy matrix, representing an image that contains a closed line (i.e. the contour)
+                    to be filled
+param start_point_y: an integer representing the ordinate of the starting point
+param start_point_x: an integer representing the abscissa of the starting point
 """
 def flood_fill(source_image, start_point_y, start_point_x):
     kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
@@ -114,20 +124,15 @@ def flood_fill(source_image, start_point_y, start_point_x):
     # do the flood fill:
     i = 0
     while True:
-        print("flood_fill: iteration = ", i)
         cv.imwrite("..\\output\\binary_aux_image_" + str(i) + ".png", binary_aux)
-        print("flood_fill: compute dilated_image: ")
         new_image = np.array(binary_aux)
-        # dilated_image = dilate_recursive(new_image, kernel, start_point_y, start_point_x, 0, 255, not_indexes)
         dilated_image = dilate(new_image, kernel)
-        print("flood_fill: compute intersection: ")
         intersected_image = intersect(dilated_image, inverted_binary_image, 0, 255)
         if np.array_equal(intersected_image, binary_aux):
             break
         binary_aux = intersected_image
         i += 1
 
-    print("flood_fill: compute union: ")
     return union(binary_aux, binary_image, 0, 255)
 
 start = time.time()
