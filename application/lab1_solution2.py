@@ -4,12 +4,9 @@ import cv2 as cv
 import sys
 import queue
 
-raw_image = cv.imread(cv.samples.findFile("..\\resources\\contour_fill_raw_image.png"))
-grayscale_image = cv.cvtColor(raw_image, cv.COLOR_BGR2GRAY)
+import time
 
-# get the inverted binary image (i.e. the complement of the contour):
-res1, binary_image = cv.threshold(grayscale_image, type=cv.THRESH_BINARY, maxval=255, thresh=0)
-res2, inverted_binary_image = cv.threshold(grayscale_image, type=cv.THRESH_BINARY_INV, maxval=255, thresh=0)
+raw_image = cv.imread(cv.samples.findFile("..\\resources\\contour_fill_input_image.png"))
 
 # now, apply the Flood Fill algorithm:
 
@@ -18,93 +15,124 @@ Get the greatest value from the sub-matrix defined by the kernel and the source 
 param source_image: a numpy matrix representing the image on which the kernel must be applied
 param kernel: a numpy matrix representing the kernel that must be applied on the source image;
                 the kernel must be a square matrix and the side must be odd.
+                also, the kernel must only contain 1 and 0; 1 values are placed on the interesting positions;
 param center_x: the abscissa of the point on which the anchor of the kernel must be superposed
 param center_y: the ordinate of the point on which the anchor of the kernel must be superposed
+param not_indexes: 
 """
-def apply_dilation_kernel(source_image, kernel, center_x, center_y):
+def apply_dilation_kernel(source_image, kernel, center_x, center_y, not_indexes):
+    image_copy = np.array(source_image)
     lim_x_1, lim_x_2 = center_x - int(kernel.shape[1] / 2), center_x + int(kernel.shape[1] / 2)
     lim_y_1, lim_y_2 = center_y - int(kernel.shape[0] / 2), center_y + int(kernel.shape[0] / 2)
-    print(lim_y_1, " ", lim_y_2, " ", lim_x_1, " ", lim_x_2, "\n")
-    source_interesting_portion = source_image[lim_y_1:lim_y_2+1, lim_x_1:lim_x_2+1] * kernel
+    source_interesting_portion = image_copy[lim_y_1:lim_y_2+1, lim_x_1:lim_x_2+1]
+    source_interesting_portion[tuple(np.array(not_indexes).T)] = 255
     return source_interesting_portion.min()
-
-"""
-:param source_image: numpy matrix
-:param kernel: numpy matrix
-"""
-def dilate(source_image, kernel):
-    result = np.array(source_image)
-    kernel_side = kernel.shape[0]
-    image_height, image_width = source_image.shape[0], source_image.shape[1]
-    start_x, end_x = int(kernel_side/2), image_width - int(kernel_side/2)
-    start_y, end_y = int(kernel_side/2), image_height - int(kernel_side/2)
-    for current_y in range(start_y, end_y):
-        for current_x in range(start_x, end_x):
-            result[current_y, current_x] = apply_dilation_kernel(source_image, kernel, current_x, current_y)
-    return result
-
-"""
-"""
-def dilate_recursive(source_image, kernel, start_point_y, start_point_x):
-
-    kernel_side = kernel.shape[0]
-    image_height, image_width = source_image.shape[0], source_image.shape[1]
-    x_min_lim, x_max_lim = int(kernel_side/2), image_width - int(kernel_side/2)
-    y_min_lim, y_max_lim = int(kernel_side/2), image_height - int(kernel_side/2)
-
-    result_image = np.array(source_image)
-    q1 = queue.Queue(maxsize=0)
-    q1.put((start_point_y, start_point_x))
-    neighbouring_vectors = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-    while q1.qsize() != 0:
-        y, x = q1.get()
-        old_value = result_image[y, x]
-        result_image[y, x] = apply_dilation_kernel(source_image, kernel, x, y)
-        if result_image[y, x] != old_value or (y == start_point_y and x == start_point_x):
-            # push all the 0 neighbouring nodes in the queue:
-                for vector_y, vector_x in neighbouring_vectors:
-                    new_y, new_x = y + vector_y, x + vector_x
-                    if new_y >= y_min_lim and new_y < y_max_lim and x_min_lim <= new_x < x_max_lim \
-                            and result_image[new_y, new_x] == source_image[start_point_y, start_point_x]:
-                        q1.put((new_y, new_x))
-
-    return result_image
-
-
 
 """
 Intersection of two different images with the same shape. Both images must be binary.
 param image_1: numpy matrix
 param image_2: numpy matrix
-param val_1: the value that must be considered 1
-param val_2: the value of 0
+param val_1: the value that must be considered 1 (i.e. the value that must be in both images
+                at the same pixel in order to be preserved)
+param val_2: the background value
 """
 def intersect(image_1, image_2, val_1, val_2):
-    result = np.array(image_1)
+    print("intersect: start")
+    indexes_1_y, indexes_1_x = np.where(image_1 == val_1)
+    indexes_2_y, indexes_2_x = np.where(image_2 == val_1)
+    indexes_1 = np.array(list(zip(indexes_1_y, indexes_1_x)))
+    indexes_2 = np.array(list(zip(indexes_2_y, indexes_2_x)))
+    binary_1 = np.zeros(image_1.shape)
+    binary_1[tuple(indexes_1.T)] = 1
+    binary_2 = np.zeros(image_2.shape)
+    binary_2[tuple(indexes_2.T)] = 1
+    intersection = np.logical_and(binary_1, binary_2)
+    indexes_3_y, indexes_3_x = np.where(intersection == True)
+    indexes_3 = list(zip(indexes_3_y, indexes_3_x))
+    intersection = np.ones(image_1.shape) * val_2
+    # intersection[[*np.array(indexes_3).T]] = val_1 # deprecated
+    intersection[tuple(np.array(indexes_3).T)] = val_1
+    return intersection
 
+
+"""
+"""
+def dilate(image_matrix, kernel):
+    kernel_side = kernel.shape[0]
+    result = np.array(image_matrix)
+    x_min, x_max = 0, image_matrix.shape[1]
+    y_min, y_max = 0, image_matrix.shape[0]
+
+    # compute the list of unimportant coordinates:
+    not_kernel = np.logical_not(kernel)
+    not_indexes_y, not_indexes_x = np.where(not_kernel == 1)
+    not_indexes = list(zip(not_indexes_y, not_indexes_x))
+
+    for current_x in range(x_min, x_max):
+        if current_x - int(kernel_side / 2) >= 0 and current_x + int(kernel_side / 2) < x_max:
+            for current_y in range(y_min, y_max):
+                if current_y - int(kernel_side / 2) >= 0 and current_y + int(kernel_side / 2) < y_max:
+                    result[current_y, current_x] = apply_dilation_kernel(image_matrix, kernel, current_x, current_y,
+                                                                         not_indexes)
     return result
+
+
+"""
+"""
+def union(image_matrix_1, image_matrix_2, val_1, val_2):
+    indexes_1_y, indexes_1_x = np.where(image_matrix_1 == val_1)
+    indexes_2_y, indexes_2_x = np.where(image_matrix_2 == val_1)
+    indexes_1 = np.array(list(zip(indexes_1_y, indexes_1_x)))
+    indexes_2 = np.array(list(zip(indexes_2_y, indexes_2_x)))
+    binary_1 = np.zeros(image_matrix_1.shape)
+    binary_1[tuple(indexes_1.T)] = 1
+    binary_2 = np.zeros(image_matrix_2.shape)
+    binary_2[tuple(indexes_2.T)] = 1
+    union = np.logical_or(binary_1, binary_2)
+    indexes_3_y, indexes_3_x = np.where(union == True)
+    indexes_3 = list(zip(indexes_3_y, indexes_3_x))
+    union = np.ones(image_matrix_1.shape) * val_2
+    union[tuple(np.array(indexes_3).T)] = val_1
+    return union
+
+
 
 """
 """
 def flood_fill(source_image, start_point_y, start_point_x):
     kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
-    initial_image = np.array(source_image)
 
     # get the complement of the source_image:
     grayscale_image = cv.cvtColor(source_image, cv.COLOR_BGR2GRAY)
     res, inverted_binary_image = cv.threshold(grayscale_image, type=cv.THRESH_BINARY_INV, maxval=255, thresh=0)
+    res2, binary_image = cv.threshold(grayscale_image, type=cv.THRESH_BINARY, maxval=255, thresh=0)
+
+    # binary_aux = np.array(binary_image)
+    binary_aux = np.ones(binary_image.shape) * 255
+    binary_aux[start_point_y, start_point_x] = 0
 
     # do the flood fill:
-    while(True):
-        new_image = np.array(initial_image)
-        new_image = intersect(dilate_recursive(new_image, kernel, start_point_y, start_point_x), inverted_binary_image)
+    i = 0
+    while True:
+        print("flood_fill: iteration = ", i)
+        cv.imwrite("..\\output\\binary_aux_image_" + str(i) + ".png", binary_aux)
+        print("flood_fill: compute dilated_image: ")
+        new_image = np.array(binary_aux)
+        # dilated_image = dilate_recursive(new_image, kernel, start_point_y, start_point_x, 0, 255, not_indexes)
+        dilated_image = dilate(new_image, kernel)
+        print("flood_fill: compute intersection: ")
+        intersected_image = intersect(dilated_image, inverted_binary_image, 0, 255)
+        if np.array_equal(intersected_image, binary_aux):
+            break
+        binary_aux = intersected_image
+        i += 1
 
+    print("flood_fill: compute union: ")
+    return union(binary_aux, binary_image, 0, 255)
 
-    return initial_image
+start = time.time()
+after_flood_fill = flood_fill(raw_image, 48, 111)
+end = time.time()
+cv.imwrite("..\\output\\after_flood_fill.png", after_flood_fill)
 
-kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
-print(kernel.shape)
-dilated_image = dilate_recursive(binary_image, kernel, 232, 101)
-cv.imshow("dilated image", dilated_image)
-cv.imshow("binary image", binary_image)
-cv.waitKey(0)
+print("execution time in seconds: ", end - start)
