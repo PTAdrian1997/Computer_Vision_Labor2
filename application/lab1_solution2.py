@@ -110,7 +110,10 @@ param start_point_y: an integer representing the ordinate of the starting point
 param start_point_x: an integer representing the abscissa of the starting point
 """
 def flood_fill(source_image, start_point_y, start_point_x):
-    kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+    kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.uint8)
+    # kernel = np.array([[255, 0, 255], [0, 0, 0], [255, 0, 255]], dtype=np.uint8)
+    # kernel = np.array([[0, 255, 0], [255, 255, 255], [0, 255, 0]], dtype=np.uint8)
+
 
     # get the complement of the source_image:
     grayscale_image = cv.cvtColor(source_image, cv.COLOR_BGR2GRAY)
@@ -125,15 +128,23 @@ def flood_fill(source_image, start_point_y, start_point_x):
     i = 0
     while True:
         cv.imwrite("..\\output\\binary_aux_image_" + str(i) + ".png", binary_aux)
-        new_image = np.array(binary_aux)
-        dilated_image = dilate(new_image, kernel)
-        intersected_image = intersect(dilated_image, inverted_binary_image, 0, 255)
+        #cv.imshow(" ", binary_aux)
+        new_image = np.array(binary_aux, dtype=np.uint8)
+        # dilated_image = dilate(new_image, kernel)
+        dilated_image = cv.erode(new_image, kernel=kernel)
+        # intersected_image = intersect(dilated_image, inverted_binary_image, 0, 255)
+        intersected_image = cv.bitwise_or(dilated_image, inverted_binary_image)
         if np.array_equal(intersected_image, binary_aux):
             break
         binary_aux = intersected_image
         i += 1
 
-    return union(binary_aux, binary_image, 0, 255)
+    # new_image = np.array(binary_aux, dtype=np.uint8)
+    # dilated_image = cv.erode(new_image, kernel)
+    # cv.imwrite("..\\output\\binary_aux_image_1.png", dilated_image)
+
+    # return union(binary_aux, binary_image, 0, 255)
+    return cv.bitwise_and(binary_image, binary_aux)
 
 start = time.time()
 after_flood_fill = flood_fill(raw_image, 48, 111)
@@ -141,3 +152,4 @@ end = time.time()
 cv.imwrite("..\\output\\after_flood_fill.png", after_flood_fill)
 
 print("execution time in seconds: ", end - start)
+
